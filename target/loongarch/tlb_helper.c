@@ -35,7 +35,10 @@ static int loongarch_map_tlb_entry(CPULoongArchState *env, hwaddr *physical,
     LoongArchTLB *tlb = &env->tlb[index];
     uint64_t plv = mmu_idx;
     uint64_t tlb_entry, tlb_ppn;
-    uint8_t tlb_ps, n, tlb_v, tlb_d, tlb_plv, tlb_nx, tlb_nr, tlb_rplv;
+    uint8_t tlb_ps, n, tlb_v, tlb_d, tlb_plv;
+#ifndef TARGET_LOONGARCH32R
+    uint8_t tlb_nx, tlb_nr, tlb_rplv;
+#endif
 
     if (index >= LOONGARCH_STLB) {
         tlb_ps = FIELD_EX64(tlb->tlb_misc, TLB_MISC, PS);
@@ -48,16 +51,21 @@ static int loongarch_map_tlb_entry(CPULoongArchState *env, hwaddr *physical,
     tlb_v = FIELD_EX64(tlb_entry, TLBENTRY, V);
     tlb_d = FIELD_EX64(tlb_entry, TLBENTRY, D);
     tlb_plv = FIELD_EX64(tlb_entry, TLBENTRY, PLV);
+#ifdef TARGET_LOONGARCH32R
+    tlb_ppn = FIELD_EX64(tlb_entry, TLBENTRY, PPN32R);
+#else
     tlb_ppn = FIELD_EX64(tlb_entry, TLBENTRY, PPN);
     tlb_nx = FIELD_EX64(tlb_entry, TLBENTRY, NX);
     tlb_nr = FIELD_EX64(tlb_entry, TLBENTRY, NR);
     tlb_rplv = FIELD_EX64(tlb_entry, TLBENTRY, RPLV);
+#endif
 
     /* Check access rights */
     if (!tlb_v) {
         return TLBRET_INVALID;
     }
 
+#ifndef TARGET_LOONGARCH32R
     if (access_type == MMU_INST_FETCH && tlb_nx) {
         return TLBRET_XI;
     }
@@ -65,11 +73,18 @@ static int loongarch_map_tlb_entry(CPULoongArchState *env, hwaddr *physical,
     if (access_type == MMU_DATA_LOAD && tlb_nr) {
         return TLBRET_RI;
     }
+#endif
 
+#ifdef TARGET_LOONGARCH32R
+    if (plv > tlb_plv) {
+        return TLBRET_PE;
+    }
+#else
     if (((tlb_rplv == 0) && (plv > tlb_plv)) ||
         ((tlb_rplv == 1) && (plv != tlb_plv))) {
         return TLBRET_PE;
     }
+#endif
 
     if ((access_type == MMU_DATA_STORE) && !tlb_d) {
         return TLBRET_DIRTY;
@@ -85,9 +100,13 @@ static int loongarch_map_tlb_entry(CPULoongArchState *env, hwaddr *physical,
     if (tlb_d) {
         *prot |= PAGE_WRITE;
     }
+#ifdef TARGET_LOONGARCH32R
+    *prot |= PAGE_EXEC;
+#else
     if (!tlb_nx) {
         *prot |= PAGE_EXEC;
     }
+#endif
     return TLBRET_MATCH;
 }
 
@@ -114,7 +133,7 @@ static bool loongarch_tlb_search(CPULoongArchState *env, target_ulong vaddr,
     compare_shift = stlb_ps + 1 - R_TLB_MISC_VPPN_SHIFT;
 
     /* Search STLB */
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < LOONGARCH_STLB / 256; ++i) {
         tlb = &env->tlb[i * 256 + stlb_idx];
         tlb_e = FIELD_EX64(tlb->tlb_misc, TLB_MISC, E);
         if (tlb_e) {
@@ -185,6 +204,20 @@ static int get_physical_address(CPULoongArchState *env, hwaddr *physical,
     }
 
     plv = kernel_mode | (user_mode << R_CSR_DMW_PLV3_SHIFT);
+#ifdef TARGET_LOONGARCH32R
+    base_v = address >> 29;
+    /* Check direct map window */
+    for (int i = 0; i < 2; i++) {
+        base_c = env->CSR_DMW[i] >> 29;
+        if ((plv & env->CSR_DMW[i]) && (base_c == base_v)) {
+            *physical = (address & 0x1fffffff) |
+                (((env->CSR_DMW[i] >> 25) & 0x7)
+                        << 29);
+            *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+            return TLBRET_MATCH;
+        }
+    }
+#else
     base_v = address >> TARGET_VIRT_ADDR_SPACE_BITS;
     /* Check direct map window */
     for (int i = 0; i < 4; i++) {
@@ -195,6 +228,7 @@ static int get_physical_address(CPULoongArchState *env, hwaddr *physical,
             return TLBRET_MATCH;
         }
     }
+#endif
 
     /* Check valid extension */
     addr_high = sextract64(address, TARGET_VIRT_ADDR_SPACE_BITS, 16);
@@ -233,6 +267,9 @@ static void raise_mmu_exception(CPULoongArchState *env, target_ulong address,
                               ? EXCCODE_ADEF : EXCCODE_ADEM;
         break;
     case TLBRET_NOMATCH:
+#ifdef TARGET_LOONGARCH32R
+        cs->exception_index = EXCCODE_TLBR;
+#else
         /* No TLB match for a mapped address */
         if (access_type == MMU_DATA_LOAD) {
             cs->exception_index = EXCCODE_PIL;
@@ -242,6 +279,7 @@ static void raise_mmu_exception(CPULoongArchState *env, target_ulong address,
             cs->exception_index = EXCCODE_PIF;
         }
         env->CSR_TLBRERA = FIELD_DP64(env->CSR_TLBRERA, CSR_TLBRERA, ISTLBR, 1);
+#endif
         break;
     case TLBRET_INVALID:
         /* TLB match with no valid bit */
@@ -272,9 +310,15 @@ static void raise_mmu_exception(CPULoongArchState *env, target_ulong address,
     }
 
     if (tlb_error == TLBRET_NOMATCH) {
+#ifdef TARGET_LOONGARCH32R
+        env->CSR_BADV = address;
+        env->CSR_TLBEHI = FIELD_DP64(env->CSR_TLBEHI, CSR_TLBEHI, VPPN,
+                                      extract64(address, 13, 20));
+#else
         env->CSR_TLBRBADV = address;
         env->CSR_TLBREHI = FIELD_DP64(env->CSR_TLBREHI, CSR_TLBREHI, VPPN,
                                       extract64(address, 13, 35));
+#endif
     } else {
         if (!FIELD_EX64(env->CSR_DBG, CSR_DBG, DST)) {
             env->CSR_BADV = address;
@@ -337,7 +381,11 @@ static void fill_tlb_entry(CPULoongArchState *env, int index)
     uint16_t csr_asid;
     uint8_t csr_ps;
 
+#ifdef TARGET_LOONGARCH32R
+    if (0) {
+#else
     if (FIELD_EX64(env->CSR_TLBRERA, CSR_TLBRERA, ISTLBR)) {
+#endif
         csr_ps = FIELD_EX64(env->CSR_TLBREHI, CSR_TLBREHI, PS);
         csr_vppn = FIELD_EX64(env->CSR_TLBREHI, CSR_TLBREHI, VPPN);
         lo0 = env->CSR_TLBRELO0;
@@ -380,7 +428,11 @@ void helper_tlbsrch(CPULoongArchState *env)
 {
     int index, match;
 
+#ifdef TARGET_LOONGARCH32R
+    if (0) {
+#else
     if (FIELD_EX64(env->CSR_TLBRERA, CSR_TLBRERA, ISTLBR)) {
+#endif
         match = loongarch_tlb_search(env, env->CSR_TLBREHI, &index);
     } else {
         match = loongarch_tlb_search(env, env->CSR_TLBEHI, &index);
@@ -452,7 +504,11 @@ void helper_tlbfill(CPULoongArchState *env)
     int index, set, stlb_idx;
     uint16_t pagesize, stlb_ps;
 
+#ifdef TARGET_LOONGARCH32R
+    if (0) {
+#else
     if (FIELD_EX64(env->CSR_TLBRERA, CSR_TLBRERA, ISTLBR)) {
+#endif
         entryhi = env->CSR_TLBREHI;
         pagesize = FIELD_EX64(env->CSR_TLBREHI, CSR_TLBREHI, PS);
     } else {
@@ -462,7 +518,11 @@ void helper_tlbfill(CPULoongArchState *env)
 
     stlb_ps = FIELD_EX64(env->CSR_STLBPS, CSR_STLBPS, PS);
 
+#ifdef TARGET_LOONGARCH32R
+    if (0) {
+#else
     if (pagesize == stlb_ps) {
+#endif
         /* Only write into STLB bits [47:13] */
         address = entryhi & ~MAKE_64BIT_MASK(0, R_CSR_TLBEHI_VPPN_SHIFT);
 

@@ -109,6 +109,7 @@ FIELD(FCSR0, CAUSE, 24, 5)
 #define  EXCCODE_BTD                 EXCODE(20, 0)
 #define  EXCCODE_BTE                 EXCODE(21, 0)
 #define  EXCCODE_DBP                 EXCODE(26, 0) /* Reserved subcode used for debug */
+#define  EXCCODE_TLBR                EXCODE(63, 0)
 
 /* cpucfg[0] bits */
 FIELD(CPUCFG0, PRID, 0, 32)
@@ -229,10 +230,15 @@ extern const char * const fregnames[32];
 #define IRQ_TIMER   11
 #define IRQ_IPI     12
 
+#ifdef TARGET_LOONGARCH32R
+#define LOONGARCH_STLB         0    /* 0 STLB */
+#define LOONGARCH_MTLB         32   /* 32 MTLB */
+#else
 #define LOONGARCH_STLB         2048 /* 2048 STLB */
 #define LOONGARCH_MTLB         64   /* 64 MTLB */
-#define LOONGARCH_TLB_MAX      (LOONGARCH_STLB + LOONGARCH_MTLB)
+#endif
 
+#define LOONGARCH_TLB_MAX      (LOONGARCH_STLB + LOONGARCH_MTLB)
 /*
  * define the ASID PS E VPPN field of TLB
  */
@@ -250,8 +256,8 @@ struct LoongArchTLB {
 typedef struct LoongArchTLB LoongArchTLB;
 
 typedef struct CPUArchState {
-    uint64_t gpr[32];
-    uint64_t pc;
+    target_ulong gpr[32];
+    target_ulong pc;
 
     uint64_t fpr[32];
     float_status fp_status;

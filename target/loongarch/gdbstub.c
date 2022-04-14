@@ -37,6 +37,13 @@ int loongarch_cpu_gdb_read_register(CPUState *cs, GByteArray *mem_buf, int n)
 
     if (0 <= n && n < 32) {
         return gdb_get_regl(mem_buf, env->gpr[n]);
+#ifdef TARGET_LOONGARCH32R
+    } else if (n == 32) {
+        return gdb_get_regl(mem_buf, env->pc);
+    } else if (n == 33) {
+        return gdb_get_regl(mem_buf, env->CSR_BADV);
+    }
+#else
     } else if (n == 32) {
         /* orig_a0 */
         return gdb_get_regl(mem_buf, 0);
@@ -45,6 +52,7 @@ int loongarch_cpu_gdb_read_register(CPUState *cs, GByteArray *mem_buf, int n)
     } else if (n == 34) {
         return gdb_get_regl(mem_buf, env->CSR_BADV);
     }
+#endif
     return 0;
 }
 
@@ -100,6 +108,11 @@ static int loongarch_gdb_set_fpu(CPULoongArchState *env,
 
 void loongarch_cpu_register_gdb_regs_for_features(CPUState *cs)
 {
+#ifdef TARGET_LOONGARCH32R
+    gdb_register_coprocessor(cs, loongarch_gdb_get_fpu, loongarch_gdb_set_fpu,
+                             41, "loongarch-fpu32.xml", 0);
+#else
     gdb_register_coprocessor(cs, loongarch_gdb_get_fpu, loongarch_gdb_set_fpu,
                              41, "loongarch-fpu.xml", 0);
+#endif
 }

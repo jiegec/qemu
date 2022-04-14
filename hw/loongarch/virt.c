@@ -395,12 +395,87 @@ static struct _loaderparams {
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *initrd_filename;
+    target_ulong a0, a1, a2;
 } loaderparams;
+
+#define PHYS_TO_VIRT(x) ((x) | ~(target_ulong)0x7fffffff)
 
 static uint64_t cpu_loongarch_virt_to_phys(void *opaque, uint64_t addr)
 {
-    return addr & MAKE_64BIT_MASK(0, TARGET_PHYS_ADDR_SPACE_BITS);
+    //return addr & MAKE_64BIT_MASK(0, TARGET_PHYS_ADDR_SPACE_BITS);
+    return addr & 0x1fffffff;
 }
+
+static void *boot_params_buf;
+
+#define BOOTPARAM_PHYADDR ((0x4f << 20))
+#define BOOTPARAM_ADDR (0xa0000000UL + BOOTPARAM_PHYADDR)
+
+/* should set argc,argv */
+static int set_bootparam(ram_addr_t initrd_offset, long initrd_size)
+{
+    target_ulong params_size;
+    void *params_buf;
+    target_ulong *parg_env;
+    target_ulong ret;
+
+    /* Store command line.  */
+    params_size = 0x100000;
+    params_buf = g_malloc(params_size);
+
+    parg_env = (void *) params_buf;
+
+    /*
+     * pram buf like this:
+     * argv[0] argv[1] 0 env[0] env[1] ...env[i], 0, argv[0]'s data,
+     * argv[1]'s data , env[0]'data, ... , env[i]'s data
+     */
+
+    /* jump over argv and env area */
+    ret = (3 + 1) * sizeof(target_ulong);
+    /* argv0 */
+    *parg_env++ = BOOTPARAM_ADDR + ret;
+    ret = ret + 1 + snprintf(params_buf + ret, 256 - ret, "g");
+    /* argv1 */
+    *parg_env++ = BOOTPARAM_ADDR + ret;
+    if (initrd_size > 0) {
+        ret += 1 + snprintf(params_buf + ret, 256 - ret, "rd_start=0x"
+                TARGET_FMT_lx " rd_size=%li %s",
+                PHYS_TO_VIRT((uint32_t)initrd_offset),
+                initrd_size, loaderparams.kernel_cmdline);
+    } else {
+        ret += 1 + snprintf(params_buf + ret, 256 - ret,
+                "%s", loaderparams.kernel_cmdline);
+    }
+    /* argv2 */
+    *parg_env++ = 0;
+
+    /* Mem-related envs */
+    {
+        char memenv[32];
+        char highmemenv[32];
+        uint64_t ram0_size = 0x100000000;
+        /* Node 0 */
+        sprintf(memenv, "%ld", ram0_size > 0x10000000 ?
+                256 : (ram0_size >> 20));
+        sprintf(highmemenv, "%ld", ram0_size > 0x10000000 ?
+                (ram0_size >> 20) - 256 : 0);
+        setenv("memsize", memenv, 1);
+        setenv("highmemsize", highmemenv, 1);
+    }
+
+    ret = ((ret + 32) & ~31);
+
+    boot_params_buf = (void *)(params_buf + ret);
+    /* copy params_buf to physical address.La32 Physical Address Base is */
+    rom_add_blob_fixed("params", params_buf, params_size,
+            BOOTPARAM_PHYADDR);
+    loaderparams.a0 = 2;
+    loaderparams.a1 = BOOTPARAM_ADDR;
+    loaderparams.a2 = BOOTPARAM_ADDR + ret;
+    return 0;
+}
+
 
 static int64_t load_kernel_info(void)
 {
@@ -517,9 +592,10 @@ static void loongarch_devices_init(DeviceState *pch_pic, LoongArchMachineState *
         gpex_set_irq_num(GPEX_HOST(gpex_dev), i, 16 + i);
     }
 
+    DeviceState *cpudev = DEVICE(qemu_get_cpu(0));
     serial_mm_init(get_system_memory(), VIRT_UART_BASE, 0,
-                   qdev_get_gpio_in(pch_pic,
-                                    VIRT_UART_IRQ - VIRT_GSI_BASE),
+                   qdev_get_gpio_in(cpudev,
+                                    3),
                    115200, serial_hd(0), DEVICE_LITTLE_ENDIAN);
     fdt_add_uart_node(lams);
 
@@ -552,6 +628,8 @@ static void loongarch_devices_init(DeviceState *pch_pic, LoongArchMachineState *
     lams->acpi_ged = create_acpi_ged(pch_pic, lams);
     /* platform bus */
     lams->platform_bus_dev = create_platform_bus(pch_pic);
+
+    set_bootparam(0, 0);
 }
 
 static void loongarch_irq_init(LoongArchMachineState *lams)
@@ -703,6 +781,12 @@ static void reset_load_elf(void *opaque)
     cpu_reset(CPU(cpu));
     if (env->load_elf) {
         cpu_set_pc(CPU(cpu), env->elf_address);
+        env->CSR_DMW[0] = 0xa0000011;
+        env->CSR_DMW[1] = 0x80000011;
+        env->CSR_CRMD   = 0xb0;
+        env->gpr[4] = 2;
+        env->gpr[5] = 0xa4f00000;
+        env->gpr[6] = 0xa4f00020;
     }
 }
 

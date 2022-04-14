@@ -1,2 +1,5 @@
 config LOONGARCH64
     bool
+
+config LOONGARCH32R
+    bool

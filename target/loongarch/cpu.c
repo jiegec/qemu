@@ -44,6 +44,7 @@ static const char * const excp_names[] = {
     [EXCCODE_PPI] = "Page Privilege error",
     [EXCCODE_ADEF] = "Address error for instruction fetch",
     [EXCCODE_ADEM] = "Address error for Memory access",
+    [EXCCODE_ALE] = "Address unaligned access",
     [EXCCODE_SYS] = "Syscall",
     [EXCCODE_BRK] = "Break",
     [EXCCODE_INE] = "Instruction Non-Existent",
@@ -113,6 +114,18 @@ void loongarch_cpu_set_irq(void *opaque, int irq, int level)
     }
 }
 
+void loongarch32_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
+                                   MMUAccessType access_type,
+                                   int mmu_idx, uintptr_t retaddr)
+{
+    LoongArchCPU *cpu = LOONGARCH_CPU(cs);
+    CPULoongArchState *env = &cpu->env;
+    int error_code = 0;
+
+    env->CSR_BADV = addr;
+    do_raise_exception(env, EXCCODE_ALE, retaddr);
+}
+
 static inline bool cpu_loongarch_hw_interrupts_enabled(CPULoongArchState *env)
 {
     bool ret = 0;
@@ -142,7 +155,11 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
     bool update_badinstr = 1;
     int cause = -1;
     const char *name;
+#ifdef TARGET_LOONGARCH32R
+    bool tlbfill = cs->exception_index == EXCCODE_TLBR;
+#else
     bool tlbfill = FIELD_EX64(env->CSR_TLBRERA, CSR_TLBRERA, ISTLBR);
+#endif
     uint32_t vec_size = FIELD_EX64(env->CSR_ECFG, CSR_ECFG, VS);
 
     if (cs->exception_index != EXCCODE_INT) {
@@ -153,10 +170,17 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
             name = excp_names[cs->exception_index];
         }
 
+#ifdef TARGET_LOONGARCH32R
+        qemu_log_mask(CPU_LOG_INT,
+                     "%s enter: pc " TARGET_FMT_lx " ERA " TARGET_FMT_lx
+                     " %s exception\n", __func__,
+                     env->pc, env->CSR_ERA,  name);
+#else
         qemu_log_mask(CPU_LOG_INT,
                      "%s enter: pc " TARGET_FMT_lx " ERA " TARGET_FMT_lx
                      " TLBRERA " TARGET_FMT_lx " %s exception\n", __func__,
                      env->pc, env->CSR_ERA, env->CSR_TLBRERA, name);
+#endif
     }
 
     switch (cs->exception_index) {
@@ -198,6 +222,12 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
     case EXCCODE_PPI:
         cause = cs->exception_index;
         break;
+    case EXCCODE_TLBR:
+        /* set the DA mode */
+        env->CSR_CRMD = FIELD_DP64(env->CSR_CRMD, CSR_CRMD, DA, 1);
+        env->CSR_CRMD = FIELD_DP64(env->CSR_CRMD, CSR_CRMD, PG, 0);
+        cause = cs->exception_index;
+        break;
     default:
         qemu_log("Error: exception(%d) has not been supported\n",
                  cs->exception_index);
@@ -209,7 +239,11 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
     }
 
     /* Save PLV and IE */
+#ifdef TARGET_LOONGARCH32R
+    if (0) {
+#else
     if (tlbfill) {
+#endif
         env->CSR_TLBRPRMD = FIELD_DP64(env->CSR_TLBRPRMD, CSR_TLBRPRMD, PPLV,
                                        FIELD_EX64(env->CSR_CRMD,
                                        CSR_CRMD, PLV));
@@ -238,6 +272,9 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
     if (vec_size) {
         vec_size = (1 << vec_size) * 4;
     }
+#ifdef TARGET_LOONGARCH32R
+    vec_size = 0;
+#endif
 
     if  (cs->exception_index == EXCCODE_INT) {
         /* Interrupt */
@@ -263,6 +300,20 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
             env->pc = env->CSR_EENTRY;
             env->pc += EXCODE_MCODE(cause) * vec_size;
         }
+#ifdef TARGET_LOONGARCH32R
+        qemu_log_mask(CPU_LOG_INT,
+                      "%s: PC " TARGET_FMT_lx " ERA " TARGET_FMT_lx
+                      " cause %d%s\n, ESTAT " TARGET_FMT_lx
+                      " EXCFG " TARGET_FMT_lx " BADVA " TARGET_FMT_lx
+                      "BADI " TARGET_FMT_lx " SYS_NUM " TARGET_FMT_lu
+                      " cpu %d asid " TARGET_FMT_lx "\n", __func__, env->pc,
+                      env->CSR_ERA,
+                      cause, tlbfill ? "(refill)" : "", env->CSR_ESTAT,
+                      env->CSR_ECFG,
+                      env->CSR_BADV,
+                      env->CSR_BADI, env->gpr[11], cs->cpu_index,
+                      env->CSR_ASID);
+#else
         qemu_log_mask(CPU_LOG_INT,
                       "%s: PC " TARGET_FMT_lx " ERA " TARGET_FMT_lx
                       " cause %d%s\n, ESTAT " TARGET_FMT_lx
@@ -275,6 +326,7 @@ static void loongarch_cpu_do_interrupt(CPUState *cs)
                       tlbfill ? env->CSR_TLBRBADV : env->CSR_BADV,
                       env->CSR_BADI, env->gpr[11], cs->cpu_index,
                       env->CSR_ASID);
+#endif
     }
     cs->exception_index = -1;
 }
@@ -623,16 +675,16 @@ void loongarch_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     CPULoongArchState *env = &cpu->env;
     int i;
 
-    qemu_fprintf(f, " PC=%016" PRIx64 " ", env->pc);
-    qemu_fprintf(f, " FCSR0 0x%08x  fp_status 0x%02x\n", env->fcsr0,
-                 get_float_exception_flags(&env->fp_status));
+    qemu_fprintf(f, "pc=0x%08" PRIx64 "\n", env->pc);
+    //qemu_fprintf(f, " FCSR0 0x%08x  fp_status 0x%02x\n", env->fcsr0,
+    //             get_float_exception_flags(&env->fp_status));
 
     /* gpr */
     for (i = 0; i < 32; i++) {
         if ((i & 3) == 0) {
-            qemu_fprintf(f, " GPR%02d:", i);
+            qemu_fprintf(f, "GPR%02d:", i);
         }
-        qemu_fprintf(f, " %s %016" PRIx64, regnames[i], env->gpr[i]);
+        qemu_fprintf(f, " %s %08" PRIx64, regnames[i], env->gpr[i]);
         if ((i & 3) == 3) {
             qemu_fprintf(f, "\n");
         }
@@ -646,11 +698,13 @@ void loongarch_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     qemu_fprintf(f, "BADV=%016" PRIx64 "\n", env->CSR_BADV);
     qemu_fprintf(f, "BADI=%016" PRIx64 "\n", env->CSR_BADI);
     qemu_fprintf(f, "EENTRY=%016" PRIx64 "\n", env->CSR_EENTRY);
+#ifndef TARGET_LOONGARCH32R
     qemu_fprintf(f, "PRCFG1=%016" PRIx64 ", PRCFG2=%016" PRIx64 ","
                  " PRCFG3=%016" PRIx64 "\n",
                  env->CSR_PRCFG1, env->CSR_PRCFG3, env->CSR_PRCFG3);
     qemu_fprintf(f, "TLBRENTRY=%016" PRIx64 "\n", env->CSR_TLBRENTRY);
     qemu_fprintf(f, "TLBRBADV=%016" PRIx64 "\n", env->CSR_TLBRBADV);
+#endif
     qemu_fprintf(f, "TLBRERA=%016" PRIx64 "\n", env->CSR_TLBRERA);
 
     /* fpr */
@@ -673,6 +727,9 @@ static struct TCGCPUOps loongarch_tcg_ops = {
     .restore_state_to_opc = loongarch_restore_state_to_opc,
 
 #ifndef CONFIG_USER_ONLY
+#ifdef TARGET_LOONGARCH32R
+    .do_unaligned_access = loongarch32_cpu_do_unaligned_access,
+#endif
     .tlb_fill = loongarch_cpu_tlb_fill,
     .cpu_exec_interrupt = loongarch_cpu_exec_interrupt,
     .do_interrupt = loongarch_cpu_do_interrupt,
@@ -691,7 +748,11 @@ static const struct SysemuCPUOps loongarch_sysemu_ops = {
 
 static gchar *loongarch_gdb_arch_name(CPUState *cs)
 {
+#ifdef TARGET_LOONGARCH32R
+    return g_strdup("loongarch32");
+#else
     return g_strdup("loongarch64");
+#endif
 }
 
 static void loongarch_cpu_class_init(ObjectClass *c, void *data)
@@ -719,8 +780,13 @@ static void loongarch_cpu_class_init(ObjectClass *c, void *data)
     cc->gdb_read_register = loongarch_cpu_gdb_read_register;
     cc->gdb_write_register = loongarch_cpu_gdb_write_register;
     cc->disas_set_info = loongarch_cpu_disas_set_info;
+#ifdef TARGET_LOONGARCH32R
+    cc->gdb_num_core_regs = 34;
+    cc->gdb_core_xml_file = "loongarch-base32.xml";
+#else
     cc->gdb_num_core_regs = 35;
     cc->gdb_core_xml_file = "loongarch-base64.xml";
+#endif
     cc->gdb_stop_before_watchpoint = true;
     cc->gdb_arch_name = loongarch_gdb_arch_name;
 
