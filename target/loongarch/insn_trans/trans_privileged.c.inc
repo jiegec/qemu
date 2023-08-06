@@ -56,6 +56,7 @@ enum {
     CSRFL_READONLY = (1 << 0),
     CSRFL_EXITTB   = (1 << 1),
     CSRFL_IO       = (1 << 2),
+    CSRFL_LA64ONLY = (1 << 3),
 };
 
 #define CSR_OFF_FUNCS(NAME, FL, RD, WR)                    \
@@ -96,7 +97,7 @@ static const CSRInfo csr_info[] = {
     CSR_OFF(PGDH),
     CSR_OFF_FUNCS(PGD, CSRFL_READONLY, gen_helper_csrrd_pgd, NULL),
     CSR_OFF(PWCL),
-    CSR_OFF(PWCH),
+    CSR_OFF_FLAGS(PWCH, CSRFL_LA64ONLY),
     CSR_OFF(STLBPS),
     CSR_OFF(RVACFG),
     CSR_OFF_FUNCS(CPUID, CSRFL_READONLY, gen_helper_csrrd_cpuid, NULL),
@@ -179,6 +180,11 @@ static bool check_csr_flags(DisasContext *ctx, const CSRInfo *csr, bool write)
     if ((csr->flags & CSRFL_READONLY) && write) {
         return false;
     }
+#ifdef TARGET_LOONGARCH32
+    if (csr->flags & CSRFL_LA64ONLY) {
+        return false;
+    }
+#endif
     if ((csr->flags & CSRFL_IO) && translator_io_start(&ctx->base)) {
         ctx->base.is_jmp = DISAS_EXIT_UPDATE;
     } else if ((csr->flags & CSRFL_EXITTB) && write) {
