@@ -9,27 +9,27 @@ static const uint32_t fcsr_mask[4] = {
 
 static bool trans_fsel(DisasContext *ctx, arg_fsel *a)
 {
-    TCGv zero = tcg_constant_tl(0);
-    TCGv dest = get_fpr(ctx, a->fd);
-    TCGv src1 = get_fpr(ctx, a->fj);
-    TCGv src2 = get_fpr(ctx, a->fk);
-    TCGv cond;
+    TCGv_i64 zero = tcg_constant_i64(0);
+    TCGv_i64 dest = get_fpr(ctx, a->fd);
+    TCGv_i64 src1 = get_fpr(ctx, a->fj);
+    TCGv_i64 src2 = get_fpr(ctx, a->fk);
+    TCGv_i64 cond;
 
     CHECK_FPE;
 
-    cond = tcg_temp_new();
-    tcg_gen_ld8u_tl(cond, cpu_env, offsetof(CPULoongArchState, cf[a->ca]));
-    tcg_gen_movcond_tl(TCG_COND_EQ, dest, cond, zero, src1, src2);
+    cond = tcg_temp_new_i64();
+    tcg_gen_ld8u_i64(cond, cpu_env, offsetof(CPULoongArchState, cf[a->ca]));
+    tcg_gen_movcond_i64(TCG_COND_EQ, dest, cond, zero, src1, src2);
     set_fpr(a->fd, dest);
 
     return true;
 }
 
 static bool gen_f2f(DisasContext *ctx, arg_ff *a,
-                    void (*func)(TCGv, TCGv), bool nanbox)
+                    void (*func)(TCGv_i64, TCGv_i64), bool nanbox)
 {
-    TCGv dest = get_fpr(ctx, a->fd);
-    TCGv src = get_fpr(ctx, a->fj);
+    TCGv_i64 dest = get_fpr(ctx, a->fd);
+    TCGv_i64 src = get_fpr(ctx, a->fj);
 
     CHECK_FPE;
 
@@ -43,10 +43,10 @@ static bool gen_f2f(DisasContext *ctx, arg_ff *a,
 }
 
 static bool gen_r2f(DisasContext *ctx, arg_fr *a,
-                    void (*func)(TCGv, TCGv))
+                    void (*func)(TCGv_i64, TCGv))
 {
     TCGv src = gpr_src(ctx, a->rj, EXT_NONE);
-    TCGv dest = get_fpr(ctx, a->fd);
+    TCGv_i64 dest = get_fpr(ctx, a->fd);
 
     CHECK_FPE;
 
@@ -57,10 +57,10 @@ static bool gen_r2f(DisasContext *ctx, arg_fr *a,
 }
 
 static bool gen_f2r(DisasContext *ctx, arg_rf *a,
-                    void (*func)(TCGv, TCGv))
+                    void (*func)(TCGv, TCGv_i64))
 {
     TCGv dest = gpr_dst(ctx, a->rd, EXT_NONE);
-    TCGv src = get_fpr(ctx, a->fj);
+    TCGv_i64 src = get_fpr(ctx, a->fj);
 
     CHECK_FPE;
 
@@ -78,13 +78,17 @@ static bool trans_movgr2fcsr(DisasContext *ctx, arg_movgr2fcsr *a)
     CHECK_FPE;
 
     if (mask == UINT32_MAX) {
-        tcg_gen_st32_i64(Rj, cpu_env, offsetof(CPULoongArchState, fcsr0));
+        tcg_gen_st32_tl(Rj, cpu_env, offsetof(CPULoongArchState, fcsr0));
     } else {
         TCGv_i32 fcsr0 = tcg_temp_new_i32();
         TCGv_i32 temp = tcg_temp_new_i32();
 
         tcg_gen_ld_i32(fcsr0, cpu_env, offsetof(CPULoongArchState, fcsr0));
+#ifdef TARGET_LOONGARCH32
+        tcg_gen_mov_i32(temp, Rj);
+#else
         tcg_gen_extrl_i64_i32(temp, Rj);
+#endif
         tcg_gen_andi_i32(temp, temp, mask);
         tcg_gen_andi_i32(fcsr0, fcsr0, ~mask);
         tcg_gen_or_i32(fcsr0, fcsr0, temp);
@@ -107,49 +111,65 @@ static bool trans_movfcsr2gr(DisasContext *ctx, arg_movfcsr2gr *a)
 
     CHECK_FPE;
 
-    tcg_gen_ld32u_i64(dest, cpu_env, offsetof(CPULoongArchState, fcsr0));
-    tcg_gen_andi_i64(dest, dest, fcsr_mask[a->fcsrs]);
+    tcg_gen_ld32u_tl(dest, cpu_env, offsetof(CPULoongArchState, fcsr0));
+    tcg_gen_andi_tl(dest, dest, fcsr_mask[a->fcsrs]);
     gen_set_gpr(a->rd, dest, EXT_NONE);
 
     return true;
 }
 
-static void gen_movgr2fr_w(TCGv dest, TCGv src)
+static void gen_movgr2fr_w(TCGv_i64 dest, TCGv src)
 {
+#ifdef TARGET_LOONGARCH32
+    TCGv_i64 src_i64 = tcg_temp_new_i64();
+    tcg_gen_extu_i32_i64(src_i64, src);
+    tcg_gen_deposit_i64(dest, dest, src_i64, 0, 32);
+#else
     tcg_gen_deposit_i64(dest, dest, src, 0, 32);
+#endif
 }
 
-static void gen_movgr2frh_w(TCGv dest, TCGv src)
+static void gen_movgr2frh_w(TCGv_i64 dest, TCGv src)
 {
+#ifdef TARGET_LOONGARCH32
+    TCGv_i64 src_i64 = tcg_temp_new_i64();
+    tcg_gen_extu_i32_i64(src_i64, src);
+    tcg_gen_deposit_i64(dest, dest, src_i64, 32, 32);
+#else
     tcg_gen_deposit_i64(dest, dest, src, 32, 32);
+#endif
 }
 
-static void gen_movfrh2gr_s(TCGv dest, TCGv src)
+static void gen_movfrh2gr_s(TCGv dest, TCGv_i64 src)
 {
+#ifdef TARGET_LOONGARCH32
+    tcg_gen_extrh_i64_i32(dest, src);
+#else
     tcg_gen_sextract_tl(dest, src, 32, 32);
+#endif
 }
 
 static bool trans_movfr2cf(DisasContext *ctx, arg_movfr2cf *a)
 {
-    TCGv t0;
-    TCGv src = get_fpr(ctx, a->fj);
+    TCGv_i64 t0;
+    TCGv_i64 src = get_fpr(ctx, a->fj);
 
     CHECK_FPE;
 
-    t0 = tcg_temp_new();
-    tcg_gen_andi_tl(t0, src, 0x1);
-    tcg_gen_st8_tl(t0, cpu_env, offsetof(CPULoongArchState, cf[a->cd & 0x7]));
+    t0 = tcg_temp_new_i64();
+    tcg_gen_andi_i64(t0, src, 0x1);
+    tcg_gen_st8_i64(t0, cpu_env, offsetof(CPULoongArchState, cf[a->cd & 0x7]));
 
     return true;
 }
 
 static bool trans_movcf2fr(DisasContext *ctx, arg_movcf2fr *a)
 {
-    TCGv dest = get_fpr(ctx, a->fd);
+    TCGv_i64 dest = get_fpr(ctx, a->fd);
 
     CHECK_FPE;
 
-    tcg_gen_ld8u_tl(dest, cpu_env,
+    tcg_gen_ld8u_i64(dest, cpu_env,
                     offsetof(CPULoongArchState, cf[a->cj & 0x7]));
     set_fpr(a->fd, dest);
 
@@ -178,11 +198,15 @@ static bool trans_movcf2gr(DisasContext *ctx, arg_movcf2gr *a)
     return true;
 }
 
-TRANS(fmov_s, gen_f2f, tcg_gen_mov_tl, true)
-TRANS(fmov_d, gen_f2f, tcg_gen_mov_tl, false)
+TRANS(fmov_s, gen_f2f, tcg_gen_mov_i64, true)
+TRANS(fmov_d, gen_f2f, tcg_gen_mov_i64, false)
 TRANS(movgr2fr_w, gen_r2f, gen_movgr2fr_w)
-TRANS(movgr2fr_d, gen_r2f, tcg_gen_mov_tl)
+TRANS_64(movgr2fr_d, gen_r2f, tcg_gen_mov_tl)
 TRANS(movgr2frh_w, gen_r2f, gen_movgr2frh_w)
+#ifdef TARGET_LOONGARCH32
+TRANS(movfr2gr_s, gen_f2r, tcg_gen_extrl_i64_i32)
+#else
 TRANS(movfr2gr_s, gen_f2r, tcg_gen_ext32s_tl)
-TRANS(movfr2gr_d, gen_f2r, tcg_gen_mov_tl)
+#endif
+TRANS_64(movfr2gr_d, gen_f2r, tcg_gen_mov_tl)
 TRANS(movfrh2gr_s, gen_f2r, gen_movfrh2gr_s)

@@ -3930,23 +3930,23 @@ static bool trans_vbitseli_b(DisasContext *ctx, arg_vv_i *a)
 }
 
 #define VSET(NAME, COND)                                                       \
-static bool trans_## NAME (DisasContext *ctx, arg_cv *a)                       \
-{                                                                              \
-    TCGv_i64 t1, al, ah;                                                       \
-                                                                               \
-    al = tcg_temp_new_i64();                                                   \
-    ah = tcg_temp_new_i64();                                                   \
-    t1 = tcg_temp_new_i64();                                                   \
-                                                                               \
-    get_vreg64(ah, a->vj, 1);                                                  \
-    get_vreg64(al, a->vj, 0);                                                  \
-                                                                               \
-    CHECK_SXE;                                                                 \
-    tcg_gen_or_i64(t1, al, ah);                                                \
-    tcg_gen_setcondi_i64(COND, t1, t1, 0);                                     \
-    tcg_gen_st8_tl(t1, cpu_env, offsetof(CPULoongArchState, cf[a->cd & 0x7])); \
-                                                                               \
-    return true;                                                               \
+static bool trans_## NAME (DisasContext *ctx, arg_cv *a)                        \
+{                                                                               \
+    TCGv_i64 t1, al, ah;                                                        \
+                                                                                \
+    al = tcg_temp_new_i64();                                                    \
+    ah = tcg_temp_new_i64();                                                    \
+    t1 = tcg_temp_new_i64();                                                    \
+                                                                                \
+    get_vreg64(ah, a->vj, 1);                                                   \
+    get_vreg64(al, a->vj, 0);                                                   \
+                                                                                \
+    CHECK_SXE;                                                                  \
+    tcg_gen_or_i64(t1, al, ah);                                                 \
+    tcg_gen_setcondi_i64(COND, t1, t1, 0);                                      \
+    tcg_gen_st8_i64(t1, cpu_env, offsetof(CPULoongArchState, cf[a->cd & 0x7])); \
+                                                                                \
+    return true;                                                                \
 }
 
 VSET(vseteqz_v, TCG_COND_EQ)
@@ -3965,7 +3965,7 @@ static bool trans_vinsgr2vr_b(DisasContext *ctx, arg_vr_i *a)
 {
     TCGv src = gpr_src(ctx, a->rj, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_st8_i64(src, cpu_env,
+    tcg_gen_st8_tl(src, cpu_env,
                     offsetof(CPULoongArchState, fpr[a->vd].vreg.B(a->imm)));
     return true;
 }
@@ -3974,7 +3974,7 @@ static bool trans_vinsgr2vr_h(DisasContext *ctx, arg_vr_i *a)
 {
     TCGv src = gpr_src(ctx, a->rj, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_st16_i64(src, cpu_env,
+    tcg_gen_st16_tl(src, cpu_env,
                     offsetof(CPULoongArchState, fpr[a->vd].vreg.H(a->imm)));
     return true;
 }
@@ -3983,7 +3983,7 @@ static bool trans_vinsgr2vr_w(DisasContext *ctx, arg_vr_i *a)
 {
     TCGv src = gpr_src(ctx, a->rj, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_st32_i64(src, cpu_env,
+    tcg_gen_st32_tl(src, cpu_env,
                      offsetof(CPULoongArchState, fpr[a->vd].vreg.W(a->imm)));
     return true;
 }
@@ -3992,7 +3992,7 @@ static bool trans_vinsgr2vr_d(DisasContext *ctx, arg_vr_i *a)
 {
     TCGv src = gpr_src(ctx, a->rj, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_st_i64(src, cpu_env,
+    tcg_gen_st_tl(src, cpu_env,
                    offsetof(CPULoongArchState, fpr[a->vd].vreg.D(a->imm)));
     return true;
 }
@@ -4001,7 +4001,7 @@ static bool trans_vpickve2gr_b(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld8s_i64(dst, cpu_env,
+    tcg_gen_ld8s_tl(dst, cpu_env,
                      offsetof(CPULoongArchState, fpr[a->vj].vreg.B(a->imm)));
     return true;
 }
@@ -4010,7 +4010,7 @@ static bool trans_vpickve2gr_h(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld16s_i64(dst, cpu_env,
+    tcg_gen_ld16s_tl(dst, cpu_env,
                       offsetof(CPULoongArchState, fpr[a->vj].vreg.H(a->imm)));
     return true;
 }
@@ -4019,7 +4019,7 @@ static bool trans_vpickve2gr_w(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld32s_i64(dst, cpu_env,
+    tcg_gen_ld32s_tl(dst, cpu_env,
                       offsetof(CPULoongArchState, fpr[a->vj].vreg.W(a->imm)));
     return true;
 }
@@ -4028,7 +4028,7 @@ static bool trans_vpickve2gr_d(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld_i64(dst, cpu_env,
+    tcg_gen_ld_tl(dst, cpu_env,
                    offsetof(CPULoongArchState, fpr[a->vj].vreg.D(a->imm)));
     return true;
 }
@@ -4037,7 +4037,7 @@ static bool trans_vpickve2gr_bu(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld8u_i64(dst, cpu_env,
+    tcg_gen_ld8u_tl(dst, cpu_env,
                      offsetof(CPULoongArchState, fpr[a->vj].vreg.B(a->imm)));
     return true;
 }
@@ -4046,7 +4046,7 @@ static bool trans_vpickve2gr_hu(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld16u_i64(dst, cpu_env,
+    tcg_gen_ld16u_tl(dst, cpu_env,
                       offsetof(CPULoongArchState, fpr[a->vj].vreg.H(a->imm)));
     return true;
 }
@@ -4055,7 +4055,7 @@ static bool trans_vpickve2gr_wu(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld32u_i64(dst, cpu_env,
+    tcg_gen_ld32u_tl(dst, cpu_env,
                       offsetof(CPULoongArchState, fpr[a->vj].vreg.W(a->imm)));
     return true;
 }
@@ -4064,7 +4064,7 @@ static bool trans_vpickve2gr_du(DisasContext *ctx, arg_rv_i *a)
 {
     TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
     CHECK_SXE;
-    tcg_gen_ld_i64(dst, cpu_env,
+    tcg_gen_ld_tl(dst, cpu_env,
                    offsetof(CPULoongArchState, fpr[a->vj].vreg.D(a->imm)));
     return true;
 }
@@ -4074,7 +4074,7 @@ static bool gvec_dup(DisasContext *ctx, arg_vr *a, MemOp mop)
     TCGv src = gpr_src(ctx, a->rj, EXT_NONE);
     CHECK_SXE;
 
-    tcg_gen_gvec_dup_i64(mop, vec_full_offset(a->vd),
+    tcg_gen_gvec_dup_tl(mop, vec_full_offset(a->vd),
                          16, ctx->vl/8, src);
     return true;
 }
@@ -4131,7 +4131,8 @@ static bool gen_vreplve(DisasContext *ctx, arg_vvr *a, int vece, int bit,
 
     CHECK_SXE;
 
-    tcg_gen_andi_i64(t0, gpr_src(ctx, a->rk, EXT_NONE), (LSX_LEN/bit) -1);
+    tcg_gen_extu_tl_i64(t0, gpr_src(ctx, a->rk, EXT_NONE));
+    tcg_gen_andi_i64(t0, t0, (LSX_LEN / bit) - 1);
     tcg_gen_shli_i64(t0, t0, vece);
     if (HOST_BIG_ENDIAN) {
         tcg_gen_xori_i64(t0, t0, vece << ((LSX_LEN/bit) -1));

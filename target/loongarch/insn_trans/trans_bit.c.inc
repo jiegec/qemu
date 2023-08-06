@@ -18,14 +18,20 @@ static bool gen_rr(DisasContext *ctx, arg_rr *a,
 
 static void gen_bytepick_w(TCGv dest, TCGv src1, TCGv src2, target_long sa)
 {
+#ifdef TARGET_LOONGARCH32
+    tcg_gen_extract2_tl(dest, src1, src2, (32 - sa * 8));
+#else
     tcg_gen_concat_tl_i64(dest, src1, src2);
     tcg_gen_sextract_i64(dest, dest, (32 - sa * 8), 32);
+#endif
 }
 
+#ifdef TARGET_LOONGARCH64
 static void gen_bytepick_d(TCGv dest, TCGv src1, TCGv src2, target_long sa)
 {
     tcg_gen_extract2_i64(dest, src1, src2, (64 - sa * 8));
 }
+#endif
 
 static bool gen_bstrins(DisasContext *ctx, arg_rr_ms_ls *a,
                         DisasExtend dst_ext)
@@ -83,9 +89,10 @@ static void gen_cto_w(TCGv dest, TCGv src1)
     gen_ctz_w(dest, dest);
 }
 
+#ifdef TARGET_LOONGARCH64
 static void gen_clz_d(TCGv dest, TCGv src1)
 {
-    tcg_gen_clzi_i64(dest, src1, TARGET_LONG_BITS);
+    tcg_gen_clzi_tl(dest, src1, TARGET_LONG_BITS);
 }
 
 static void gen_clo_d(TCGv dest, TCGv src1)
@@ -110,6 +117,7 @@ static void gen_revb_2w(TCGv dest, TCGv src1)
     tcg_gen_bswap64_i64(dest, src1);
     tcg_gen_rotri_i64(dest, dest, 32);
 }
+#endif
 
 static void gen_revb_2h(TCGv dest, TCGv src1)
 {
@@ -124,6 +132,7 @@ static void gen_revb_2h(TCGv dest, TCGv src1)
     tcg_gen_or_tl(dest, t0, t1);
 }
 
+#ifdef TARGET_LOONGARCH64
 static void gen_revb_4h(TCGv dest, TCGv src1)
 {
     TCGv mask = tcg_constant_tl(0x00FF00FF00FF00FFULL);
@@ -163,6 +172,7 @@ static void gen_revh_d(TCGv dest, TCGv src1)
     tcg_gen_or_tl(t0, t0, t1);
     tcg_gen_rotri_tl(dest, t0, 32);
 }
+#endif
 
 static void gen_maskeqz(TCGv dest, TCGv src1, TCGv src2)
 {
@@ -184,25 +194,25 @@ TRANS(clo_w, gen_rr, EXT_NONE, EXT_NONE, gen_clo_w)
 TRANS(clz_w, gen_rr, EXT_ZERO, EXT_NONE, gen_clz_w)
 TRANS(cto_w, gen_rr, EXT_NONE, EXT_NONE, gen_cto_w)
 TRANS(ctz_w, gen_rr, EXT_NONE, EXT_NONE, gen_ctz_w)
-TRANS(clo_d, gen_rr, EXT_NONE, EXT_NONE, gen_clo_d)
-TRANS(clz_d, gen_rr, EXT_NONE, EXT_NONE, gen_clz_d)
-TRANS(cto_d, gen_rr, EXT_NONE, EXT_NONE, gen_cto_d)
-TRANS(ctz_d, gen_rr, EXT_NONE, EXT_NONE, gen_ctz_d)
+TRANS_64(clo_d, gen_rr, EXT_NONE, EXT_NONE, gen_clo_d)
+TRANS_64(clz_d, gen_rr, EXT_NONE, EXT_NONE, gen_clz_d)
+TRANS_64(cto_d, gen_rr, EXT_NONE, EXT_NONE, gen_cto_d)
+TRANS_64(ctz_d, gen_rr, EXT_NONE, EXT_NONE, gen_ctz_d)
 TRANS(revb_2h, gen_rr, EXT_NONE, EXT_SIGN, gen_revb_2h)
-TRANS(revb_4h, gen_rr, EXT_NONE, EXT_NONE, gen_revb_4h)
-TRANS(revb_2w, gen_rr, EXT_NONE, EXT_NONE, gen_revb_2w)
-TRANS(revb_d, gen_rr, EXT_NONE, EXT_NONE, tcg_gen_bswap64_i64)
-TRANS(revh_2w, gen_rr, EXT_NONE, EXT_NONE, gen_revh_2w)
-TRANS(revh_d, gen_rr, EXT_NONE, EXT_NONE, gen_revh_d)
+TRANS_64(revb_4h, gen_rr, EXT_NONE, EXT_NONE, gen_revb_4h)
+TRANS_64(revb_2w, gen_rr, EXT_NONE, EXT_NONE, gen_revb_2w)
+TRANS_64(revb_d, gen_rr, EXT_NONE, EXT_NONE, tcg_gen_bswap64_i64)
+TRANS_64(revh_2w, gen_rr, EXT_NONE, EXT_NONE, gen_revh_2w)
+TRANS_64(revh_d, gen_rr, EXT_NONE, EXT_NONE, gen_revh_d)
 TRANS(bitrev_4b, gen_rr, EXT_ZERO, EXT_SIGN, gen_helper_bitswap)
-TRANS(bitrev_8b, gen_rr, EXT_NONE, EXT_NONE, gen_helper_bitswap)
+TRANS_64(bitrev_8b, gen_rr, EXT_NONE, EXT_NONE, gen_helper_bitswap)
 TRANS(bitrev_w, gen_rr, EXT_NONE, EXT_SIGN, gen_helper_bitrev_w)
-TRANS(bitrev_d, gen_rr, EXT_NONE, EXT_NONE, gen_helper_bitrev_d)
+TRANS_64(bitrev_d, gen_rr, EXT_NONE, EXT_NONE, gen_helper_bitrev_d)
 TRANS(maskeqz, gen_rrr, EXT_NONE, EXT_NONE, EXT_NONE, gen_maskeqz)
 TRANS(masknez, gen_rrr, EXT_NONE, EXT_NONE, EXT_NONE, gen_masknez)
 TRANS(bytepick_w, gen_rrr_sa, EXT_NONE, EXT_NONE, gen_bytepick_w)
-TRANS(bytepick_d, gen_rrr_sa, EXT_NONE, EXT_NONE, gen_bytepick_d)
+TRANS_64(bytepick_d, gen_rrr_sa, EXT_NONE, EXT_NONE, gen_bytepick_d)
 TRANS(bstrins_w, gen_bstrins, EXT_SIGN)
-TRANS(bstrins_d, gen_bstrins, EXT_NONE)
+TRANS_64(bstrins_d, gen_bstrins, EXT_NONE)
 TRANS(bstrpick_w, gen_bstrpick, EXT_SIGN)
-TRANS(bstrpick_d, gen_bstrpick, EXT_NONE)
+TRANS_64(bstrpick_d, gen_bstrpick, EXT_NONE)

@@ -341,7 +341,7 @@
                    'TARGET_I386',
                    'TARGET_S390X',
                    'TARGET_MIPS',
-                   'TARGET_LOONGARCH64',
+                   'TARGET_LOONGARCH',
                    'TARGET_RISCV' ] } }
 
 ##
@@ -359,5 +359,5 @@
                    'TARGET_I386',
                    'TARGET_S390X',
                    'TARGET_MIPS',
-                   'TARGET_LOONGARCH64',
+                   'TARGET_LOONGARCH',
                    'TARGET_RISCV' ] } }

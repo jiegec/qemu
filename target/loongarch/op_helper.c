@@ -62,7 +62,7 @@ void helper_asrtgt_d(CPULoongArchState *env, target_ulong rj, target_ulong rk)
     }
 }
 
-target_ulong helper_crc32(target_ulong val, target_ulong m, uint64_t sz)
+target_ulong helper_crc32(target_ulong val, target_ulong m, target_ulong sz)
 {
     uint8_t buf[8];
     target_ulong mask = ((sz * 8) == 64) ? -1ULL : ((1ULL << (sz * 8)) - 1);
@@ -72,7 +72,7 @@ target_ulong helper_crc32(target_ulong val, target_ulong m, uint64_t sz)
     return (int32_t) (crc32(val ^ 0xffffffff, buf, sz) ^ 0xffffffff);
 }
 
-target_ulong helper_crc32c(target_ulong val, target_ulong m, uint64_t sz)
+target_ulong helper_crc32c(target_ulong val, target_ulong m, target_ulong sz)
 {
     uint8_t buf[8];
     target_ulong mask = ((sz * 8) == 64) ? -1ULL : ((1ULL << (sz * 8)) - 1);
@@ -86,7 +86,7 @@ target_ulong helper_cpucfg(CPULoongArchState *env, target_ulong rj)
     return rj >= ARRAY_SIZE(env->cpucfg) ? 0 : env->cpucfg[rj];
 }
 
-uint64_t helper_rdtime_d(CPULoongArchState *env)
+target_ulong helper_rdtime_d(CPULoongArchState *env)
 {
 #ifdef CONFIG_USER_ONLY
     return cpu_get_host_ticks();

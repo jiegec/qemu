@@ -10,7 +10,7 @@ static bool gen_ll(DisasContext *ctx, arg_rr_i *a, MemOp mop)
     TCGv t0 = tcg_temp_new();
 
     tcg_gen_addi_tl(t0, src1, a->imm);
-    tcg_gen_qemu_ld_i64(dest, t0, ctx->mem_idx, mop);
+    tcg_gen_qemu_ld_tl(dest, t0, ctx->mem_idx, mop);
     tcg_gen_st_tl(t0, cpu_env, offsetof(CPULoongArchState, lladdr));
     tcg_gen_st_tl(dest, cpu_env, offsetof(CPULoongArchState, llval));
     gen_set_gpr(a->rd, dest, EXT_NONE);
@@ -70,8 +70,8 @@ static bool gen_am(DisasContext *ctx, arg_rrr *a,
 
 TRANS(ll_w, gen_ll, MO_TESL)
 TRANS(sc_w, gen_sc, MO_TESL)
-TRANS(ll_d, gen_ll, MO_TEUQ)
-TRANS(sc_d, gen_sc, MO_TEUQ)
+TRANS_64(ll_d, gen_ll, MO_TEUQ)
+TRANS_64(sc_d, gen_sc, MO_TEUQ)
 TRANS(amswap_w, gen_am, tcg_gen_atomic_xchg_tl, MO_TESL)
 TRANS(amswap_d, gen_am, tcg_gen_atomic_xchg_tl, MO_TEUQ)
 TRANS(amadd_w, gen_am, tcg_gen_atomic_fetch_add_tl, MO_TESL)
