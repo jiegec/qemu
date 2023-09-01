@@ -32,6 +32,8 @@
 #include "../tcg-ldst.c.inc"
 #include <asm/hwcap.h>
 
+bool use_lsx_instructions;
+
 #ifdef CONFIG_DEBUG_TCG
 static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
     "zero",
@@ -65,7 +67,39 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
     "s5",
     "s6",
     "s7",
-    "s8"
+    "s8",
+    "vr0",
+    "vr1",
+    "vr2",
+    "vr3",
+    "vr4",
+    "vr5",
+    "vr6",
+    "vr7",
+    "vr8",
+    "vr9",
+    "vr10",
+    "vr11",
+    "vr12",
+    "vr13",
+    "vr14",
+    "vr15",
+    "vr16",
+    "vr17",
+    "vr18",
+    "vr19",
+    "vr20",
+    "vr21",
+    "vr22",
+    "vr23",
+    "vr24",
+    "vr25",
+    "vr26",
+    "vr27",
+    "vr28",
+    "vr29",
+    "vr30",
+    "vr31"
 };
 #endif
 
@@ -102,6 +136,15 @@ static const int tcg_target_reg_alloc_order[] = {
     TCG_REG_A2,
     TCG_REG_A1,
     TCG_REG_A0,
+
+    /* Vector registers */
+    TCG_REG_V0, TCG_REG_V1, TCG_REG_V2, TCG_REG_V3,
+    TCG_REG_V4, TCG_REG_V5, TCG_REG_V6, TCG_REG_V7,
+    TCG_REG_V8, TCG_REG_V9, TCG_REG_V10, TCG_REG_V11,
+    TCG_REG_V12, TCG_REG_V13, TCG_REG_V14, TCG_REG_V15,
+    TCG_REG_V16, TCG_REG_V17, TCG_REG_V18, TCG_REG_V19,
+    TCG_REG_V20, TCG_REG_V21, TCG_REG_V22, TCG_REG_V23,
+    /* V24 - V31 are caller-saved, and skipped.  */
 };
 
 static const int tcg_target_call_iarg_regs[] = {
@@ -135,6 +178,7 @@ static TCGReg tcg_target_call_oarg_reg(TCGCallReturnKind kind, int slot)
 #define TCG_CT_CONST_WSZ   0x2000
 
 #define ALL_GENERAL_REGS   MAKE_64BIT_MASK(0, 32)
+#define ALL_VECTOR_REGS    MAKE_64BIT_MASK(32, 32)
 
 static inline tcg_target_long sextreg(tcg_target_long val, int pos, int len)
 {
@@ -988,6 +1032,31 @@ static void tcg_out_qemu_ld(TCGContext *s, TCGReg data_reg, TCGReg addr_reg,
     }
 }
 
+static void tcg_out_qemu_ldst_i128(TCGContext *s, TCGReg data_lo, TCGReg data_hi,
+                                   TCGReg addr_reg, MemOpIdx oi, bool is_ld)
+{
+    TCGLabelQemuLdst *ldst;
+    HostAddress h;
+
+    ldst = prepare_host_addr(s, &h, addr_reg, oi, true);
+    if (is_ld) {
+        tcg_out_opc_vldx(s, TCG_VEC_TMP0, h.base, h.index);
+        tcg_out_opc_vpickve2gr_d(s, data_lo, TCG_VEC_TMP0, 0);
+        tcg_out_opc_vpickve2gr_d(s, data_hi, TCG_VEC_TMP0, 1);
+    } else {
+        tcg_out_opc_vinsgr2vr_d(s, TCG_VEC_TMP0, data_lo, 0);
+        tcg_out_opc_vinsgr2vr_d(s, TCG_VEC_TMP0, data_hi, 1);
+        tcg_out_opc_vstx(s, TCG_VEC_TMP0, h.base, h.index);
+    }
+
+    if (ldst) {
+        ldst->type = TCG_TYPE_I128;
+        ldst->datalo_reg = data_lo;
+        ldst->datahi_reg = data_hi;
+        ldst->raddr = tcg_splitwx_to_rx(s->code_ptr);
+    }
+}
+
 static void tcg_out_qemu_st_indexed(TCGContext *s, MemOp opc,
                                     TCGReg rd, HostAddress h)
 {
@@ -1092,6 +1161,7 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
     TCGArg a0 = args[0];
     TCGArg a1 = args[1];
     TCGArg a2 = args[2];
+    TCGArg a3 = args[3];
     int c2 = const_args[2];
 
     switch (opc) {
@@ -1454,6 +1524,10 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
     case INDEX_op_qemu_ld_a64_i64:
         tcg_out_qemu_ld(s, a0, a1, a2, TCG_TYPE_I64);
         break;
+    case INDEX_op_qemu_ld_a32_i128:
+    case INDEX_op_qemu_ld_a64_i128:
+        tcg_out_qemu_ldst_i128(s, a0, a1, a2, a3, true);
+        break;
     case INDEX_op_qemu_st_a32_i32:
     case INDEX_op_qemu_st_a64_i32:
         tcg_out_qemu_st(s, a0, a1, a2, TCG_TYPE_I32);
@@ -1461,6 +1535,10 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
     case INDEX_op_qemu_st_a32_i64:
     case INDEX_op_qemu_st_a64_i64:
         tcg_out_qemu_st(s, a0, a1, a2, TCG_TYPE_I64);
+        break;
+    case INDEX_op_qemu_st_a32_i128:
+    case INDEX_op_qemu_st_a64_i128:
+        tcg_out_qemu_ldst_i128(s, a0, a1, a2, a3, false);
         break;
 
     case INDEX_op_mov_i32:  /* Always emitted via tcg_out_mov.  */
@@ -1549,6 +1627,14 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_qemu_ld_a32_i64:
     case INDEX_op_qemu_ld_a64_i64:
         return C_O1_I1(r, r);
+
+    case INDEX_op_qemu_ld_a32_i128:
+    case INDEX_op_qemu_ld_a64_i128:
+        return C_O2_I1(r, r, r);
+
+    case INDEX_op_qemu_st_a32_i128:
+    case INDEX_op_qemu_st_a64_i128:
+        return C_O0_I3(r, r, r);
 
     case INDEX_op_andc_i32:
     case INDEX_op_andc_i64:
@@ -1708,6 +1794,10 @@ static void tcg_target_init(TCGContext *s)
         exit(EXIT_FAILURE);
     }
 
+    if (hwcap & HWCAP_LOONGARCH_LSX) {
+        use_lsx_instructions = 1;
+    }
+
     tcg_target_available_regs[TCG_TYPE_I32] = ALL_GENERAL_REGS;
     tcg_target_available_regs[TCG_TYPE_I64] = ALL_GENERAL_REGS;
 
@@ -1723,6 +1813,18 @@ static void tcg_target_init(TCGContext *s)
     tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_S8);
     tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_S9);
 
+    if (use_lsx_instructions) {
+        tcg_target_available_regs[TCG_TYPE_V128] = ALL_VECTOR_REGS;
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V24);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V25);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V26);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V27);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V28);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V29);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V30);
+        tcg_regset_reset_reg(tcg_target_call_clobber_regs, TCG_REG_V31);
+    }
+
     s->reserved_regs = 0;
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_ZERO);
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_TMP0);
@@ -1731,6 +1833,7 @@ static void tcg_target_init(TCGContext *s)
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_SP);
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_TP);
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_RESERVED);
+    tcg_regset_set_reg(s->reserved_regs, TCG_VEC_TMP0);
 }
 
 typedef struct {
