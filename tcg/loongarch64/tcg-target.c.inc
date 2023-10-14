@@ -773,6 +773,33 @@ static void tcg_out_call(TCGContext *s, const tcg_insn_unit *arg,
 static void tcg_out_ldst(TCGContext *s, LoongArchInsn opc, TCGReg data,
                          TCGReg addr, intptr_t offset)
 {
+    // use LDPTR for larger imm range if possible
+    if ((offset & 0x3) == 0 && (opc == OPC_LD_W || opc == OPC_LD_D || opc == OPC_ST_W || opc == OPC_ST_D)) {
+        intptr_t offset_shifted = offset >> 2;
+        intptr_t imm14 = sextreg(offset_shifted, 0, 14);
+        if (offset_shifted == imm14) {
+            LoongArchInsn ptr_opc;
+            switch (opc) {
+            case OPC_LD_W:
+                ptr_opc = OPC_LDOX4_W;
+                break;
+            case OPC_LD_D:
+                ptr_opc = OPC_LDOX4_D;
+                break;
+            case OPC_ST_W:
+                ptr_opc = OPC_STOX4_W;
+                break;
+            case OPC_ST_D:
+                ptr_opc = OPC_STOX4_D;
+                break;
+            default:
+                g_assert_not_reached();
+            }
+            tcg_out32(s, encode_djsk14_insn(ptr_opc, data, addr, imm14));
+            return;
+        }
+    }
+
     intptr_t imm12 = sextreg(offset, 0, 12);
 
     if (offset != imm12) {
