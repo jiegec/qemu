@@ -54,6 +54,7 @@
 &j_i          rj imm
 &scr_r        scrd rj
 &r_scr        rd scrj
+&rd           rd
 
 #
 # Formats
@@ -105,6 +106,8 @@
 @j_i               .... ........ .. imm:8 rj:5 .....    &j_i
 @scr_r     .... ........ ..... ..... rj:5 ... scrd:2    &scr_r
 @r_scr     .... ........ ..... ..... ... scrj:2 rd:5    &r_scr
+@i3         .... ........ ..... ..... .. imm:3 .....    &i
+@rd             .... ........ ..... ..... ..... rd:5    &rd
 
 #
 # Fixed point arithmetic operation instruction
@@ -2091,3 +2094,5 @@ xvstelm_b        0011 00111 ..... ........ ..... .....    @vr_i8i5x
 #
 movgr2scr      0000 0000 0000 0000 0000 10 ..... 000..    @scr_r
 movscr2gr      0000 0000 0000 0000 0000 11 000.. .....    @r_scr
+x86mttop       0000 0000 0000 0000 0111 00 00... 00000    @i3
+x86mftop       0000 0000 0000 0000 0111 01 00000 .....    @rd

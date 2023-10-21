@@ -51,3 +51,31 @@ static bool trans_movscr2gr(DisasContext *ctx, arg_movscr2gr *a)
 
     return true;
 }
+
+static bool trans_x86mttop(DisasContext *ctx, arg_x86mttop *a)
+{
+    TCGv_i32 src = tcg_constant_i32(a->imm);
+
+    if (!check_lbt(ctx)) {
+        return true;
+    }
+
+    tcg_gen_st_i32(src, tcg_env,
+                   offsetof(CPULoongArchState, ftop));
+
+    return true;
+}
+
+static bool trans_x86mftop(DisasContext *ctx, arg_x86mftop *a)
+{
+    TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
+
+    if (!check_lbt(ctx)) {
+        return true;
+    }
+
+    tcg_gen_ld32u_i64(dst, tcg_env,
+                      offsetof(CPULoongArchState, ftop));
+
+    return true;
+}

@@ -2646,5 +2646,13 @@ static void output_r_scr(DisasContext *ctx, arg_r_scr *a,
     output(ctx, mnemonic, "r%d, scr%d", a->rd, a->scrj);
 }
 
+static void output_rd(DisasContext *ctx, arg_rd *a,
+                           const char *mnemonic)
+{
+    output(ctx, mnemonic, "r%d", a->rd);
+}
+
 INSN_LBT(movgr2scr,          scr_r)
 INSN_LBT(movscr2gr,          r_scr)
+INSN_LBT(x86mttop,           i)
+INSN_LBT(x86mftop,           rd)
