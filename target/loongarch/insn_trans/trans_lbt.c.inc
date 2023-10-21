@@ -79,3 +79,43 @@ static bool trans_x86mftop(DisasContext *ctx, arg_x86mftop *a)
 
     return true;
 }
+
+static bool trans_setx86loope(DisasContext *ctx, arg_setx86loope *a)
+{
+    TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
+    TCGv src = gpr_dst(ctx, a->rj, EXT_NONE);
+    TCGv zero = tcg_constant_tl(0);
+    TCGv temp1 = tcg_temp_new();
+    TCGv temp2 = tcg_temp_new();
+
+    if (!check_lbt(ctx)) {
+        return true;
+    }
+
+    // (src != 0) && ZF
+    tcg_gen_setcond_tl(TCG_COND_NE, temp1, src, zero);
+    tcg_gen_extu_i32_tl(temp2, cpu_ZF);
+    tcg_gen_and_tl(dst, temp1, temp2);
+
+    return true;
+}
+
+static bool trans_setx86loopne(DisasContext *ctx, arg_setx86loope *a)
+{
+    TCGv dst = gpr_dst(ctx, a->rd, EXT_NONE);
+    TCGv src = gpr_dst(ctx, a->rj, EXT_NONE);
+    TCGv zero = tcg_constant_tl(0);
+    TCGv temp1 = tcg_temp_new();
+    TCGv temp2 = tcg_temp_new();
+
+    if (!check_lbt(ctx)) {
+        return true;
+    }
+
+    // (src != 0) && !ZF
+    tcg_gen_setcond_tl(TCG_COND_NE, temp1, src, zero);
+    tcg_gen_extu_i32_tl(temp2, cpu_ZF);
+    tcg_gen_andc_tl(dst, temp1, temp2);
+
+    return true;
+}

@@ -23,6 +23,7 @@
 /* Global register indices */
 TCGv cpu_gpr[32], cpu_pc;
 static TCGv cpu_lladdr, cpu_llval;
+TCGv_i32 cpu_CF, cpu_PF, cpu_AF, cpu_ZF, cpu_SF, cpu_OF;
 
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
@@ -368,4 +369,10 @@ void loongarch_translate_init(void)
                     offsetof(CPULoongArchState, lladdr), "lladdr");
     cpu_llval = tcg_global_mem_new(tcg_env,
                     offsetof(CPULoongArchState, llval), "llval");
+    cpu_CF = tcg_global_mem_new_i32(tcg_env, offsetof(CPULoongArchState, CF), "CF");
+    cpu_PF = tcg_global_mem_new_i32(tcg_env, offsetof(CPULoongArchState, PF), "PF");
+    cpu_AF = tcg_global_mem_new_i32(tcg_env, offsetof(CPULoongArchState, AF), "AF");
+    cpu_ZF = tcg_global_mem_new_i32(tcg_env, offsetof(CPULoongArchState, ZF), "ZF");
+    cpu_SF = tcg_global_mem_new_i32(tcg_env, offsetof(CPULoongArchState, SF), "SF");
+    cpu_OF = tcg_global_mem_new_i32(tcg_env, offsetof(CPULoongArchState, OF), "OF");
 }
