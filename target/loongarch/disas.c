@@ -2626,3 +2626,25 @@ INSN_LASX(xvstelm_d,         vr_ii)
 INSN_LASX(xvstelm_w,         vr_ii)
 INSN_LASX(xvstelm_h,         vr_ii)
 INSN_LASX(xvstelm_b,         vr_ii)
+
+#define INSN_LBT(insn, type)                                \
+static bool trans_##insn(DisasContext *ctx, arg_##type * a) \
+{                                                           \
+    output_##type(ctx, a, #insn);                           \
+    return true;                                            \
+}
+
+static void output_scr_r(DisasContext *ctx, arg_scr_r *a,
+                           const char *mnemonic)
+{
+    output(ctx, mnemonic, "scr%d, r%d", a->scrd, a->rj);
+}
+
+static void output_r_scr(DisasContext *ctx, arg_r_scr *a,
+                           const char *mnemonic)
+{
+    output(ctx, mnemonic, "r%d, scr%d", a->rd, a->scrj);
+}
+
+INSN_LBT(movgr2scr,          scr_r)
+INSN_LBT(movscr2gr,          r_scr)
