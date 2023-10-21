@@ -296,6 +296,18 @@ typedef struct CPUArchState {
     uint64_t lladdr; /* LL virtual address compared against SC */
     uint64_t llval;
 
+    /* LBT */
+    uint64_t scr[4]; /* four scratch registers */
+    uint32_t ftop; /* x87 fp stack top */
+    bool fp_stack_mode; /* enable x87 fp stack mode */
+    /* x86 FLAGS or ARM PSTATE */
+    uint32_t CF; /* 0 or 1, also ARM C */
+    uint32_t PF; /* PF is the bit 0 */
+    uint32_t AF; /* 0 or 1 */
+    uint32_t ZF; /* 0 or non-zero, also ARM Z */
+    uint32_t SF; /* SF is the bit 31, also ARM N */
+    uint32_t OF; /* OF is the bit 31, also ARM V */
+
     /* LoongArch CSRs */
     uint64_t CSR_CRMD;
     uint64_t CSR_PRMD;
@@ -453,6 +465,7 @@ static inline void set_pc(CPULoongArchState *env, uint64_t value)
 #define HW_FLAGS_CRMD_PG    R_CSR_CRMD_PG_MASK   /* 0x10 */
 #define HW_FLAGS_VA32       0x20
 #define HW_FLAGS_EUEN_ASXE  0x40
+#define HW_FLAGS_EUEN_BTE   0x80
 
 static inline void cpu_get_tb_cpu_state(CPULoongArchState *env, vaddr *pc,
                                         uint64_t *cs_base, uint32_t *flags)
@@ -463,6 +476,7 @@ static inline void cpu_get_tb_cpu_state(CPULoongArchState *env, vaddr *pc,
     *flags |= FIELD_EX64(env->CSR_EUEN, CSR_EUEN, FPE) * HW_FLAGS_EUEN_FPE;
     *flags |= FIELD_EX64(env->CSR_EUEN, CSR_EUEN, SXE) * HW_FLAGS_EUEN_SXE;
     *flags |= FIELD_EX64(env->CSR_EUEN, CSR_EUEN, ASXE) * HW_FLAGS_EUEN_ASXE;
+    *flags |= FIELD_EX64(env->CSR_EUEN, CSR_EUEN, BTE) * HW_FLAGS_EUEN_BTE;
     *flags |= is_va32(env) * HW_FLAGS_VA32;
 }
 
