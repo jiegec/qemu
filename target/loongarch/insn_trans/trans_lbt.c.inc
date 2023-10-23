@@ -119,3 +119,23 @@ static bool trans_setx86loopne(DisasContext *ctx, arg_setx86loope *a)
 
     return true;
 }
+
+static bool trans_x86inc_b(DisasContext *ctx, arg_x86inc_b *a)
+{
+    TCGv src = gpr_dst(ctx, a->rj, EXT_NONE);
+    TCGv addend = tcg_constant_tl(1);
+    TCGv temp1 = tcg_temp_new();
+    TCGv result = tcg_temp_new();
+    TCGv result = tcg_temp_new();
+
+    if (!check_lbt(ctx)) {
+        return true;
+    }
+
+    /* Preserve CF, others are set according to result */
+
+    tcg_gen_movi_i64(tmp, 0);
+    tcg_gen_add2_i64(result, flag, t0, tmp, t1, tmp);
+
+    return true;
+}

@@ -2652,9 +2652,23 @@ static void output_rd(DisasContext *ctx, arg_rd *a,
     output(ctx, mnemonic, "r%d", a->rd);
 }
 
+static void output_rj(DisasContext *ctx, arg_rj *a,
+                           const char *mnemonic)
+{
+    output(ctx, mnemonic, "r%d", a->rj);
+}
+
 INSN_LBT(movgr2scr,          scr_r)
 INSN_LBT(movscr2gr,          r_scr)
 INSN_LBT(x86mttop,           i)
 INSN_LBT(x86mftop,           rd)
 INSN_LBT(setx86loope,        rr)
 INSN_LBT(setx86loopne,       rr)
+INSN_LBT(x86inc_b,           rj)
+INSN_LBT(x86inc_h,           rj)
+INSN_LBT(x86inc_w,           rj)
+INSN_LBT(x86inc_d,           rj)
+INSN_LBT(x86dec_b,           rj)
+INSN_LBT(x86dec_h,           rj)
+INSN_LBT(x86dec_w,           rj)
+INSN_LBT(x86dec_d,           rj)
