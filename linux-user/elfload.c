@@ -2433,6 +2433,7 @@ static bool zero_bss(abi_ulong start_bss, abi_ulong end_bss,
                      int prot, Error **errp)
 {
     abi_ulong align_bss;
+    error_printf("In zero_bss start_bss=%lx end_bss=%lx prot=%x\n", start_bss, end_bss, prot);;
 
     /* We only expect writable bss; the code segment shouldn't need this. */
     if (!(prot & PROT_WRITE)) {
@@ -3102,6 +3103,7 @@ void probe_guest_base(const char *image_name, abi_ulong guest_loaddr,
     assert(QEMU_IS_ALIGNED(guest_base, align));
     qemu_log_mask(CPU_LOG_PAGE, "Locating guest address space "
                   "@ 0x%" PRIx64 "\n", (uint64_t)guest_base);
+    error_printf("Guest base is %lx\n", guest_base);
 }
 
 enum {
@@ -3261,6 +3263,8 @@ static void load_elf_image(const char *image_name, const ImageSource *src,
     int i, prot_exec;
     Error *err = NULL;
 
+    error_printf("In load_elf_image: image_name=%s\n", image_name);;
+
     /*
      * First of all, some simple consistency checks.
      * Note that we rely on the bswapped ehdr staying in bprm_buf,
@@ -3395,6 +3399,7 @@ static void load_elf_image(const char *image_name, const ImageSource *src,
      * In both cases, we will overwrite pages in this range with mappings
      * from the executable.
      */
+    error_printf("Try to reserved memory at %lx\n", load_addr);
     load_addr = target_mmap(load_addr, (size_t)hiaddr - loaddr + 1, PROT_NONE,
                             MAP_PRIVATE | MAP_ANON | MAP_NORESERVE |
                             (ehdr->e_type == ET_EXEC ? MAP_FIXED_NOREPLACE : 0),
@@ -3403,6 +3408,7 @@ static void load_elf_image(const char *image_name, const ImageSource *src,
         goto exit_mmap;
     }
     load_bias = load_addr - loaddr;
+    error_printf("Reserved memory at %lx\n", load_addr);
 
     if (elf_is_fdpic(ehdr)) {
         struct elf32_fdpic_loadseg *loadsegs = info->loadsegs =
@@ -3459,6 +3465,8 @@ static void load_elf_image(const char *image_name, const ImageSource *src,
     for (i = 0; i < ehdr->e_phnum; i++) {
         struct elf_phdr *eppnt = phdr + i;
         if (eppnt->p_type == PT_LOAD) {
+            error_printf("Handling PT_LOAD p_vaddr=%lx p_filesz=%lx p_memsz=%lx p_offset=%lx\n", eppnt->p_vaddr, eppnt->p_filesz, eppnt->p_memsz, eppnt->p_offset);
+
             abi_ulong vaddr, vaddr_po, vaddr_ps, vaddr_ef, vaddr_em;
             int elf_prot = 0;
 
@@ -3846,6 +3854,7 @@ int load_elf_binary(struct linux_binprm *bprm, struct image_info *info)
 
     /* Do this so that we can load the interpreter, if need be.  We will
        change some of these later */
+    error_printf("In load_elf_binary, setup arg pages\n");
     bprm->p = setup_arg_pages(bprm, info);
 
     scratch = g_new0(char, TARGET_PAGE_SIZE);

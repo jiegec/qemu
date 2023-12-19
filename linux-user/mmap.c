@@ -274,6 +274,7 @@ static bool mmap_frag(abi_ulong real_start, abi_ulong start, abi_ulong last,
     void *host_start;
     int prot_old, prot_new;
     int host_prot_old, host_prot_new;
+    error_printf("In mmap_frag: real_start=%lx start=%lx last=%lx prot=%x flags=%x fd=%d off=%lx\n", real_start, start, last, prot, flags, fd, offset);
 
     if (!(flags & MAP_ANONYMOUS)
         && (flags & MAP_TYPE) == MAP_SHARED
@@ -304,6 +305,7 @@ static bool mmap_frag(abi_ulong real_start, abi_ulong start, abi_ulong last,
          * outside of the fragment we need to map.  Allocate a new host
          * page to cover, discarding whatever else may have been present.
          */
+        error_printf("In mmap_frag call mmap with addr=%p len=%lx\n", host_start, qemu_host_page_size);
         void *p = mmap(host_start, qemu_host_page_size,
                        target_to_host_prot(prot),
                        flags | MAP_ANONYMOUS, -1, 0);
@@ -324,13 +326,16 @@ static bool mmap_frag(abi_ulong real_start, abi_ulong start, abi_ulong last,
     /* Adjust protection to be able to write. */
     if (!(host_prot_old & PROT_WRITE)) {
         host_prot_old |= PROT_WRITE;
+        error_printf("In mmap_frag mprotect from %p with length %lx\n", host_start, qemu_host_page_size);
         mprotect(host_start, qemu_host_page_size, host_prot_old);
     }
 
     /* Read or zero the new guest pages. */
     if (flags & MAP_ANONYMOUS) {
+        error_printf("In mmap_frag memset from %lx to %lx\n", start, last);
         memset(g2h_untagged(start), 0, last - start + 1);
     } else {
+        error_printf("In mmap_frag pread from %lx to %lx\n", start, last);
         if (pread(fd, g2h_untagged(start), last - start + 1, offset) == -1) {
             return false;
         }
@@ -547,6 +552,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
     if (!(flags & (MAP_FIXED | MAP_FIXED_NOREPLACE))) {
         host_len = len + offset - host_offset;
         host_len = HOST_PAGE_ALIGN(host_len);
+        error_printf("Calling mmap_find_vma\n");
         start = mmap_find_vma(real_start, host_len, TARGET_PAGE_SIZE);
         if (start == (abi_ulong)-1) {
             errno = ENOMEM;
@@ -577,6 +583,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
 
         /* Are we trying to create a map beyond EOF?.  */
         if (offset + len > sb.st_size) {
+            error_printf("Mapping beyond EOF\n");
             /*
              * If so, truncate the file map at eof aligned with
              * the hosts real pagesize. Additional anonymous maps
@@ -600,6 +607,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
          * especially important if qemu_host_page_size >
          * qemu_real_host_page_size.
          */
+        error_printf("Calling host mmap at %lx with length %lx, prot %x, fd=-1, offset=0\n", start, host_len, flags | MAP_FIXED | MAP_ANONYMOUS);
         p = mmap(g2h_untagged(start), host_len, host_prot,
                  flags | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
         if (p == MAP_FAILED) {
@@ -608,6 +616,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
         /* update start so that it points to the file position at 'offset' */
         host_start = (uintptr_t)p;
         if (!(flags & MAP_ANONYMOUS)) {
+            error_printf("Calling host mmap at %lx with length %lx, prot %x\n", start, len, host_prot);
             p = mmap(g2h_untagged(start), len, host_prot,
                      flags | MAP_FIXED, fd, host_offset);
             if (p == MAP_FAILED) {
@@ -675,6 +684,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
                 errno = EINVAL;
                 goto fail;
             }
+            error_printf("Calling target mmap at %lx with length %lx, prot %x\n", start, len, target_prot | PROT_WRITE);
             retaddr = target_mmap(start, len, target_prot | PROT_WRITE,
                                   (flags & (MAP_FIXED | MAP_FIXED_NOREPLACE))
                                   | MAP_PRIVATE | MAP_ANONYMOUS,
@@ -682,6 +692,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
             if (retaddr == -1) {
                 goto fail;
             }
+            error_printf("Calling pread to read data to %lx\n", start);
             if (pread(fd, g2h_untagged(start), len, offset) == -1) {
                 goto fail;
             }
@@ -734,6 +745,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
             len1 = real_last - real_start + 1;
             want_p = g2h_untagged(real_start);
 
+            error_printf("Calling host mmap to handle the middle at %p with length %lx\n", want_p, len1);
             p = mmap(want_p, len1, target_to_host_prot(target_prot),
                      flags, fd, offset1);
             if (p != want_p) {
